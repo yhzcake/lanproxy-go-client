@@ -40,7 +40,7 @@ ARMS=(5 6 7)
 for v in ${ARMS[@]}; do
 	env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=$v go build -ldflags "$LDFLAGS" -gcflags "$GCFLAGS" -o client_linux_arm$v  ./src/main
 done
-if $UPX; then upx -9 client_linux_arm* server_linux_arm*;fi
+if $UPX; then upx -9 client_linux_arm*;fi
 tar -zcf lanproxy-client-linux-arm-$VERSION.tar.gz client_linux_arm*
 $sum lanproxy-client-linux-arm-$VERSION.tar.gz
 
@@ -48,8 +48,14 @@ $sum lanproxy-client-linux-arm-$VERSION.tar.gz
 env CGO_ENABLED=0 GOOS=linux GOARCH=mipsle go build -ldflags "$LDFLAGS" -gcflags "$GCFLAGS" -o client_linux_mipsle ./src/main
 env CGO_ENABLED=0 GOOS=linux GOARCH=mips go build -ldflags "$LDFLAGS" -gcflags "$GCFLAGS" -o client_linux_mips ./src/main
 
-if $UPX; then upx -9 client_linux_mips* server_linux_mips*;fi
+# IPQ60xx (Redmi AX5 等)
+echo "Building for IPQ60xx (Redmi AX5, etc.)..."
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "$LDFLAGS" -gcflags "$GCFLAGS" -o client_linux_ipq60xx ./src/main
+
+if $UPX; then upx -9 client_linux_mips* client_linux_ipq60xx;fi
 tar -zcf lanproxy-client-linux-mipsle-$VERSION.tar.gz client_linux_mipsle
 tar -zcf lanproxy-client-linux-mips-$VERSION.tar.gz client_linux_mips
+tar -zcf lanproxy-client-linux-ipq60xx-$VERSION.tar.gz client_linux_ipq60xx
 $sum lanproxy-client-linux-mipsle-$VERSION.tar.gz
 $sum lanproxy-client-linux-mips-$VERSION.tar.gz
+$sum lanproxy-client-linux-ipq60xx-$VERSION.tar.gz

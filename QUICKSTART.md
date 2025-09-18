@@ -1,56 +1,45 @@
 # 快速入门指南
 
+## 🚨 IPK 包问题解决
+
+如果遇到 `Malformed package file` 错误，请使用以下解决方案：
+
 ## 🚀 立即开始使用
 
-### 1. 获取适用于你路由器的软件包
-
-访问 [Releases 页面](../../releases) 下载对应架构的 IPK 包：
-
-- **大多数路由器**: `lanproxy-client_*_mips_24kc.ipk` 或 `lanproxy-client_*_mipsel_24kc.ipk`
-- **ARM 路由器**: `lanproxy-client_*_arm_cortex-a7.ipk`
-- **软路由/x86**: `lanproxy-client_*_x86_64.ipk`
-
-### 2. 安装到 OpenWrt 路由器
+### 方法1: 一键安装脚本（推荐 - Redmi AX5）
 
 ```bash
-# 上传文件到路由器
-scp lanproxy-client_*.ipk root@192.168.1.1:/tmp/
+# 1. 配置脚本（编辑 install-redmi-ax5.sh）
+# 设置你的服务器信息：
+#   SERVER_HOST="your.proxy.server.com"
+#   CLIENT_KEY="your_client_key_here"
 
-# SSH 连接路由器并安装
-ssh root@192.168.1.1
-opkg install /tmp/lanproxy-client_*.ipk
+# 2. 运行一键安装
+./install-redmi-ax5.sh
 ```
 
-### 3. 配置服务
+### 方法2: 使用原始构建脚本
 
 ```bash
-# 启用服务
-uci set lanproxy.main.enabled='1'
+# 运行增强版构建脚本（已添加 ipq60xx 支持）
+./build-release.sh
 
-# 设置服务器信息（请替换为你的实际信息）
-uci set lanproxy.main.server_host='你的代理服务器地址'
-uci set lanproxy.main.client_key='你的客户端密钥'
+# 找到适合的文件
+# Redmi AX5 使用: client_linux_ipq60xx
+# 或者: client_linux_arm7
 
-# 提交配置
-uci commit lanproxy
+# 上传到路由器
+scp client_linux_ipq60xx root@192.168.1.1:/usr/bin/lanproxy-client
 
-# 启动服务
-/etc/init.d/lanproxy start
-/etc/init.d/lanproxy enable
+# 在路由器上运行
+ssh root@192.168.1.1 "/usr/bin/lanproxy-client -s server -p 4900 -k key"
 ```
 
-### 4. 验证运行状态
+### 方法3: GitHub Actions 构建
 
-```bash
-# 检查服务状态
-/etc/init.d/lanproxy status
-
-# 查看日志
-logread | grep lanproxy
-
-# 检查进程
-ps | grep lanproxy-client
-```
+访问 [Actions 页面](../../actions) 下载最新构建的文件：
+- 标准包：`standard-packages` 
+- OpenWrt 专用：`openwrt-ipq60xx`
 
 ## 🔧 常见架构识别
 
