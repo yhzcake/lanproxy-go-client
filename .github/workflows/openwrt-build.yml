@@ -12,7 +12,6 @@ env:
   GO_VERSION: '1.21'
 
 jobs:
-  # 使用原有的 build-release.sh 脚本构建标准包
   build-standard:
     runs-on: ubuntu-latest
     steps:
@@ -50,13 +49,11 @@ jobs:
           client_*
         retention-days: 30
 
-  # 专门为 OpenWrt 构建 IPK 包
   build-openwrt:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          # 基于原脚本的架构，添加 OpenWrt 特定配置
           - name: mips
             goos: linux
             goarch: mips
@@ -94,7 +91,7 @@ jobs:
           go mod tidy
         fi
 
-    - name: Build OpenWrt binary
+    - name: Build binary
       env:
         CGO_ENABLED: 0
         GOOS: ${{ matrix.goos }}
@@ -108,18 +105,15 @@ jobs:
         fi
         
         LDFLAGS="-X main.VERSION=$VERSION -s -w"
-        
-        # 使用与原脚本相同的命名规则
         OUTPUT_NAME="client_linux_${{ matrix.name }}"
         
         go build -ldflags "$LDFLAGS" -o $OUTPUT_NAME ./src/main
         
-        # 压缩二进制文件
         if command -v upx >/dev/null 2>&1; then
           upx -9 $OUTPUT_NAME || true
         fi
 
-    - name: Create simple OpenWrt package
+    - name: Create package
       run: |
         VERSION=$(date -u +%Y%m%d)
         if [ "${{ github.ref_type }}" == "tag" ]; then
@@ -129,40 +123,32 @@ jobs:
         BINARY_NAME="client_linux_${{ matrix.name }}"
         PACKAGE_NAME="lanproxy-client-${{ matrix.target }}-$VERSION"
         
-        # 创建简单的目录结构
         mkdir -p $PACKAGE_NAME/usr/bin
         mkdir -p $PACKAGE_NAME/etc/init.d
         
-        # 复制二进制文件
         cp $BINARY_NAME $PACKAGE_NAME/usr/bin/lanproxy-client
         
-        # 创建简单的启动脚本
-        cat > $PACKAGE_NAME/etc/init.d/lanproxy << 'EOF'
-#!/bin/sh /etc/rc.common
-START=99
-STOP=10
-PROG=/usr/bin/lanproxy-client
-
-start() {
-    start-stop-daemon -S -q -p /var/run/lanproxy.pid -m -b -x $PROG -- -s "$SERVER_HOST" -p "$SERVER_PORT" -k "$CLIENT_KEY"
-}
-
-stop() {
-    start-stop-daemon -K -q -p /var/run/lanproxy.pid
-    rm -f /var/run/lanproxy.pid
-}
-EOF
+        echo '#!/bin/sh /etc/rc.common' > $PACKAGE_NAME/etc/init.d/lanproxy
+        echo 'START=99' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo 'STOP=10' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo 'PROG=/usr/bin/lanproxy-client' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo 'start() {' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '    start-stop-daemon -S -q -p /var/run/lanproxy.pid -m -b -x $PROG -- -s "$SERVER_HOST" -p "$SERVER_PORT" -k "$CLIENT_KEY"' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '}' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo 'stop() {' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '    start-stop-daemon -K -q -p /var/run/lanproxy.pid' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '    rm -f /var/run/lanproxy.pid' >> $PACKAGE_NAME/etc/init.d/lanproxy
+        echo '}' >> $PACKAGE_NAME/etc/init.d/lanproxy
         
         chmod +x $PACKAGE_NAME/etc/init.d/lanproxy
         
-        # 打包为 tar.gz
         tar -czf $PACKAGE_NAME.tar.gz $PACKAGE_NAME/
-        
-        # 生成校验和
         sha256sum $PACKAGE_NAME.tar.gz > $PACKAGE_NAME.tar.gz.sha256
         md5sum $PACKAGE_NAME.tar.gz > $PACKAGE_NAME.tar.gz.md5
 
-    - name: Upload OpenWrt artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: openwrt-${{ matrix.target }}
@@ -179,54 +165,45 @@ EOF
     if: startsWith(github.ref, 'refs/tags/')
     
     steps:
-    - name: Download all artifacts
+    - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
 
-    - name: Prepare release files
+    - name: Prepare release
       run: |
         mkdir -p release
-        
-        # 复制所有文件到发布目录
         find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" -o -name "*.md5" -o -name "client_*" \) -exec cp {} release/ \;
         
-        # 创建发布说明
-        cat > release/README.md << 'EOF'
-# LanProxy Go Client Release
-
-## 标准发布包
-- `lanproxy-client-*-*.tar.gz` - 模仿原始 build-release.sh 的构建结果
-- `client_*` - 直接可执行的二进制文件
-
-## OpenWrt 专用包
-- `lanproxy-client-*-*.tar.gz` - 适用于 OpenWrt 路由器的包
-
-## 使用方法
-
-### 标准平台
-```bash
-# 解压并运行
-tar -xzf lanproxy-client-*.tar.gz
-./client_* -s SERVER_IP -p SERVER_PORT -k CLIENT_KEY
-```
-
-### OpenWrt 路由器
-```bash
-# 上传到路由器
-scp client_linux_* root@192.168.1.1:/usr/bin/lanproxy-client
-
-# 设置权限并运行
-ssh root@192.168.1.1 "chmod +x /usr/bin/lanproxy-client"
-ssh root@192.168.1.1 "/usr/bin/lanproxy-client -s SERVER_IP -p 4900 -k CLIENT_KEY"
-```
-
-## 架构说明
-- `mips_24kc` - MIPS 路由器（Atheros、MediaTek等）
-- `mipsel_24kc` - Little-endian MIPS 路由器
-- `arm_cortex-a7` - ARM 路由器（包括大部分现代路由器）
-- `ipq60xx` - Redmi AX5 等 IPQ60xx 芯片路由器
-EOF
+        echo '# LanProxy Go Client Release' > release/README.md
+        echo '' >> release/README.md
+        echo '## 标准发布包' >> release/README.md
+        echo '- lanproxy-client-*-*.tar.gz - 使用原始 build-release.sh 的构建结果' >> release/README.md
+        echo '- client_* - 直接可执行的二进制文件' >> release/README.md
+        echo '' >> release/README.md
+        echo '## OpenWrt 专用包' >> release/README.md
+        echo '- lanproxy-client-*-*.tar.gz - 适用于 OpenWrt 路由器的包' >> release/README.md
+        echo '' >> release/README.md
+        echo '## 使用方法' >> release/README.md
+        echo '' >> release/README.md
+        echo '### 标准平台' >> release/README.md
+        echo '```bash' >> release/README.md
+        echo 'tar -xzf lanproxy-client-*.tar.gz' >> release/README.md
+        echo './client_* -s SERVER_IP -p SERVER_PORT -k CLIENT_KEY' >> release/README.md
+        echo '```' >> release/README.md
+        echo '' >> release/README.md
+        echo '### OpenWrt 路由器' >> release/README.md
+        echo '```bash' >> release/README.md
+        echo 'scp client_linux_* root@192.168.1.1:/usr/bin/lanproxy-client' >> release/README.md
+        echo 'ssh root@192.168.1.1 "chmod +x /usr/bin/lanproxy-client"' >> release/README.md
+        echo 'ssh root@192.168.1.1 "/usr/bin/lanproxy-client -s SERVER_IP -p 4900 -k CLIENT_KEY"' >> release/README.md
+        echo '```' >> release/README.md
+        echo '' >> release/README.md
+        echo '## 架构说明' >> release/README.md
+        echo '- mips_24kc - MIPS 路由器' >> release/README.md
+        echo '- mipsel_24kc - Little-endian MIPS 路由器' >> release/README.md
+        echo '- arm_cortex-a7 - ARM 路由器' >> release/README.md
+        echo '- ipq60xx - Redmi AX5 等设备' >> release/README.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
