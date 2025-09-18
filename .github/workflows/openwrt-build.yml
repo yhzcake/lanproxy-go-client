@@ -35,9 +35,15 @@ jobs:
             goarch: arm
             goarm: "7"
             target: arm_cortex-a9
+          # ARM 64位架构
           - arch: aarch64_cortex-a53
             goarch: arm64
             target: aarch64_cortex-a53
+          # IPQ60xx 系列 (Redmi AX5等)
+          - arch: ipq60xx
+            goarch: arm
+            goarm: "7"
+            target: ipq60xx
           # x86 架构 - 软路由
           - arch: x86_64
             goarch: amd64
@@ -214,23 +220,36 @@ jobs:
         
         # 安装打包工具
         sudo apt-get update
-        sudo apt-get install -y build-essential
+        sudo apt-get install -y build-essential binutils-multiarch
         
-        # 创建数据压缩包
+        # 验证目录结构
+        echo "Package directory structure:"
+        find $PKG_DIR -type f -exec ls -la {} \;
+        
+        # 创建数据压缩包（排除 CONTROL 目录）
         cd $PKG_DIR
-        tar --numeric-owner --group=0 --owner=0 -czf ../data.tar.gz .
+        find . -path ./CONTROL -prune -o -type f -print | tar --no-recursion -czf ../data.tar.gz -T -
         cd ..
         
         # 创建控制信息压缩包
         cd $PKG_DIR/CONTROL
-        tar --numeric-owner --group=0 --owner=0 -czf ../../control.tar.gz .
+        tar -czf ../../control.tar.gz .
         cd ../..
         
         # 创建 debian-binary 文件
         echo "2.0" > debian-binary
         
+        # 验证文件存在
+        echo "Files before packaging:"
+        ls -la debian-binary control.tar.gz data.tar.gz
+        
         # 创建 IPK 包
         ar r ${PKG_NAME}_${VERSION}_${{ matrix.target }}.ipk debian-binary control.tar.gz data.tar.gz
+        
+        # 验证 IPK 包
+        echo "IPK package info:"
+        ar t ${PKG_NAME}_${VERSION}_${{ matrix.target }}.ipk
+        file ${PKG_NAME}_${VERSION}_${{ matrix.target }}.ipk
         
         # 清理临时文件
         rm -rf $PKG_DIR debian-binary control.tar.gz data.tar.gz
